@@ -133,6 +133,58 @@ a { color: inherit; }
 .group-row span, .group-row small { color: var(--muted); font-size: 11px; margin-top: 3px; }
 .privacy-note { color: #93909e; font-size: 12px; line-height: 1.55; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; }
 
+
+.companion-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: #c8c9d0;
+  font-size: 13px;
+  background: rgba(255,255,255,.018);
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #777985;
+}
+.companion-status.ready .status-dot {
+  background: #8ee6ad;
+  box-shadow: 0 0 14px rgba(142,230,173,.3);
+}
+.companion-status.missing .status-dot {
+  background: #ff9e9e;
+}
+.companion-setup {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,.018);
+}
+.companion-setup code {
+  display: block;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: #0b0c10;
+  border: 1px solid var(--border);
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.companion-setup p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 footer { display: flex; justify-content: space-between; color: #666872; font-size: 11px; padding: 22px 4px 40px; }
 
 @media (max-width: 640px) {
