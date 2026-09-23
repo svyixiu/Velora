@@ -5,7 +5,8 @@ import { openChallenge } from "../../../../lib/session";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COOKIE_NAME = "velora.quick-login";
+const CHALLENGE_COOKIE = "velora.quick-login";
+const SESSION_KEY_COOKIE = "velora.session-key";
 const TERMINAL_STATES = new Set(["Validated", "Cancelled", "Expired", "TimedOut"]);
 
 function sameOrigin(request) {
@@ -14,13 +15,16 @@ function sameOrigin(request) {
 }
 
 function clearChallenge(response) {
-  response.cookies.set(COOKIE_NAME, "", {
+  const options = {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 0,
-  });
+  };
+
+  response.cookies.set(CHALLENGE_COOKIE, "", options);
+  response.cookies.set(SESSION_KEY_COOKIE, "", options);
 }
 
 export async function POST(request) {
@@ -28,14 +32,17 @@ export async function POST(request) {
     return NextResponse.json({ error: "Cross-site request rejected." }, { status: 403 });
   }
 
-  const sealed = request.cookies.get(COOKIE_NAME)?.value;
-  const challenge = openChallenge(sealed);
+  const sealed = request.cookies.get(CHALLENGE_COOKIE)?.value;
+  const sessionKey = request.cookies.get(SESSION_KEY_COOKIE)?.value;
+  const challenge = openChallenge(sealed, sessionKey);
 
   if (!challenge?.code || !challenge?.privateKey || !challenge?.expirationTime) {
-    return NextResponse.json(
+    const response = NextResponse.json(
       { error: "No active Velora Quick Login challenge." },
       { status: 401 },
     );
+    clearChallenge(response);
+    return response;
   }
 
   if (Date.now() >= new Date(challenge.expirationTime).getTime()) {
@@ -84,8 +91,8 @@ export async function POST(request) {
       { headers: { "cache-control": "no-store, max-age=0" } },
     );
 
-    // The private Quick Login key is intentionally destroyed here. Velora never
-    // exchanges the validated challenge for a Roblox login session/cookie.
+    // Both the encrypted challenge and its one-time AES key are destroyed here.
+    // Velora still never exchanges the validated challenge for a Roblox session.
     clearChallenge(response);
     return response;
   } catch (error) {
