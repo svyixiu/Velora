@@ -20,20 +20,22 @@ function formatDate(value) {
   }).format(date);
 }
 
-function Countdown({ expirationTime, onExpire }) {
-  const [remaining, setRemaining] = useState(0);
+function secondsRemaining(expirationTime) {
+  const expiresAt = new Date(expirationTime).getTime();
+  if (Number.isNaN(expiresAt)) return 0;
+  return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+}
+
+function Countdown({ expirationTime }) {
+  const [remaining, setRemaining] = useState(() => secondsRemaining(expirationTime));
 
   useEffect(() => {
-    const update = () => {
-      const next = Math.max(0, Math.ceil((new Date(expirationTime).getTime() - Date.now()) / 1000));
-      setRemaining(next);
-      if (next === 0) onExpire?.();
-    };
+    const update = () => setRemaining(secondsRemaining(expirationTime));
 
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
-  }, [expirationTime, onExpire]);
+  }, [expirationTime]);
 
   const minutes = Math.floor(remaining / 60);
   const seconds = String(remaining % 60).padStart(2, "0");
@@ -240,7 +242,7 @@ export default function Home() {
 
             {phase === "waiting" && challenge ? (
               <>
-                <div className="code-topline"><span>Quick Login</span><span className="timer"><Countdown expirationTime={challenge.expirationTime} onExpire={() => setStatus("Expired")} /></span></div>
+                <div className="code-topline"><span>Quick Login</span><span className="timer"><Countdown expirationTime={challenge.expirationTime} /></span></div>
                 <button type="button" className="code" onClick={copyCode} title="Copy code">{challenge.code}</button>
                 <p className="copy-hint">Tap the code to copy</p>
 
