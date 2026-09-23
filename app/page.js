@@ -230,8 +230,8 @@ export default function Home() {
             {phase === "idle" || phase === "creating" ? (
               <>
                 <div className="card-kicker">Start a mirror</div>
-                <h2>No password. No cookie. No token.</h2>
-                <p className="muted">Velora asks Roblox for a temporary Quick Login challenge and keeps its private half inside an encrypted HttpOnly cookie.</p>
+                <h2>No password. No Roblox session. No token.</h2>
+                <p className="muted">Velora asks Roblox for a temporary Quick Login challenge, generates a fresh encryption key for that attempt, and keeps both pieces in short-lived HttpOnly cookies.</p>
                 <button className="primary-button" type="button" onClick={createCode} disabled={phase === "creating"}>
                   {phase === "creating" ? "Creating code…" : "Generate Quick Login code"}
                 </button>
