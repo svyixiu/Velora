@@ -1,12 +1,47 @@
 # Velora
 
-Velora is an open-source Roblox account mirror. It uses Roblox Quick Login only to verify which account approved a short-lived code, then reads non-secret/public account information and renders it in a clean profile view.
-
-**Velora deliberately does not perform the final Quick Login session exchange and never obtains or stores a `.ROBLOSECURITY` cookie.**
+Velora is an open-source Roblox account mirror built around Roblox Quick Sign-in.
 
 > Unofficial project. Velora is not affiliated with Roblox Corporation.
 
-## What it mirrors
+## Why Velora has a local companion
+
+Roblox Quick Sign-in checks that the device generating the code is near the device approving it. A serverless deployment such as Vercel generates requests from a datacenter, not from your home network, so codes created directly by a Vercel function can fail Roblox's location check.
+
+Velora therefore uses the same high-level strategy as desktop clients such as Froststrap: the Quick Sign-in protocol runs locally on the device being signed in.
+
+```text
+Velora website
+      |
+      | localhost only
+      v
+Velora Companion
+      |
+      | /login/create
+      | /login/status
+      | /v2/login after approval
+      v
+Roblox
+```
+
+The approving device should be on the same network / nearby, as required by Roblox.
+
+## Authentication flow
+
+1. Run Velora Companion on the computer that is being signed in.
+2. Open the hosted Velora website on that same computer.
+3. The website connects only to `127.0.0.1:43127`.
+4. Velora Companion requests a Quick Sign-in code directly from Roblox using the computer's own network connection.
+5. Enter that code on a Roblox device where you are already signed in.
+6. Companion polls Roblox until the challenge becomes `Validated`.
+7. Companion performs Roblox's final AuthToken login exchange locally.
+8. The resulting `.ROBLOSECURITY` value is held only in local process memory and is used once to call `/v1/users/authenticated`.
+9. The cookie reference and Quick Sign-in private key are discarded.
+10. Only sanitized account/profile data is returned to the Velora page.
+
+The Roblox session cookie is never returned to browser JavaScript, sent to Vercel, logged, or written to disk.
+
+## What the mirror shows
 
 - Roblox user ID
 - username and display name
@@ -16,66 +51,83 @@ Velora is an open-source Roblox account mirror. It uses Roblox Quick Login only 
 - public account state
 - avatar headshot
 - friends, followers, following and group counts when available
-- public group memberships/roles when available
+- public group memberships and roles when available
 
-Velora does not expose passwords, authentication cookies, access tokens, private keys, email addresses, phone numbers, or other private account data.
-
-## How the Quick Login flow is handled
-
-1. The server requests a short-lived Quick Login challenge from Roblox.
-2. Only the visible Quick Login code and expiration are returned to client JavaScript.
-3. Velora generates a fresh random 256-bit AES key for that single Quick Login attempt.
-4. Roblox's Quick Login `privateKey` is encrypted with AES-256-GCM.
-5. The ephemeral AES key and encrypted challenge are stored in separate short-lived `HttpOnly`, `SameSite=Strict` cookies.
-6. Velora polls Roblox's Quick Login status endpoint.
-7. When the challenge becomes `Validated`, Velora uses the returned account name to resolve public profile data.
-8. Both temporary cookies are immediately destroyed.
-9. Velora **never** calls Roblox's final login endpoint and therefore never creates a Roblox authenticated session.
-
-Each Quick Login attempt receives a completely new encryption key. There is no application-wide encryption secret and no database.
-
-Roblox Quick Login is an undocumented/internal API and can change without warning. Roblox recommends Open Cloud/OAuth for supported production integrations.
-
-## Local development
+## Run the companion
 
 Requirements: Node.js 20.9+.
 
 ```bash
+git clone https://github.com/svyixiu/Velora.git
+cd Velora
 npm install
+npm run companion
+```
+
+Keep that terminal open while using Quick Sign-in.
+
+By default the companion allows requests from:
+
+- `https://velora-nu-roan.vercel.app`
+- `http://localhost:3000`
+- `http://127.0.0.1:3000`
+
+For another hosted Velora origin:
+
+```bash
+VELORA_ORIGIN=https://your-domain.example npm run companion
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:VELORA_ORIGIN="https://your-domain.example"
+npm run companion
+```
+
+## Local web development
+
+In a second terminal:
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Then open `http://localhost:3000`.
 
-No environment variables are required for the current version.
+## Vercel deployment
 
-## Deploying to Vercel
+Import the repository and deploy normally. No Vercel environment variable, database, or Roblox credential is required.
 
-1. Import this GitHub repository into Vercel.
-2. Deploy it.
+The Vercel deployment is only the interface. Quick Sign-in itself is performed by the local companion.
 
-That is all Velora currently requires. There is no database and no `VELORA_SESSION_SECRET`.
+## Important device requirement
 
-## Security model
+The browser using Velora must be on the same computer as Velora Companion because the site connects to `127.0.0.1`.
 
-- the Roblox Quick Login `privateKey` is never returned to client JavaScript
-- every Quick Login attempt receives a fresh random 256-bit encryption key
-- challenge state is encrypted with AES-256-GCM
-- the encryption key and encrypted challenge live in separate `HttpOnly` cookies
-- both cookies are `SameSite=Strict` and `Secure` in production
-- both expire with the Roblox Quick Login challenge
-- both are deleted immediately after validation, cancellation, or expiration
-- API handlers reject cross-origin browser requests
-- no Roblox session cookie or token is generated by Velora
-- no database and no server-side account storage are required
+A phone browsing the Vercel site cannot reach a companion running on your PC through `127.0.0.1`; on a phone, `127.0.0.1` means the phone itself.
 
-### Important tradeoff
+For the intended flow:
 
-This zero-configuration model keeps the encryption key and ciphertext in two separate browser cookies. JavaScript cannot read them because they are `HttpOnly`, but someone who can steal the browser's raw cookies could obtain both. The exposure window is intentionally limited to the short lifetime of the Quick Login challenge.
+```text
+PC: Velora website + Velora Companion
+Phone: Roblox account already signed in
+Both: same network / nearby
+```
 
-A deployment-wide server secret would provide stronger separation, but would require configuration. Velora currently chooses the ephemeral per-attempt design for zero-config deployment.
+## Security
 
-See [SECURITY.md](./SECURITY.md) for reporting issues.
+- Quick Sign-in `privateKey` stays in companion memory.
+- `.ROBLOSECURITY` stays in companion memory.
+- The session cookie is used only to resolve the authenticated account.
+- Neither secret is returned to the website.
+- Neither secret is sent to Vercel.
+- Neither secret is written to disk.
+- Active challenges are automatically removed when expired.
+- The localhost bridge is bound to `127.0.0.1`, not the LAN.
+- Browser origins are restricted by the companion.
+
+See [SECURITY.md](./SECURITY.md).
 
 ## License
 
