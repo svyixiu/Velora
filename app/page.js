@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const POLL_MS = 4000;
+const COMPANION_URL = "http://127.0.0.1:43127";
 
 function formatNumber(value) {
   return typeof value === "number" ? new Intl.NumberFormat().format(value) : "—";
@@ -99,7 +100,7 @@ function Profile({ account, onReset }) {
       ) : null}
 
       <div className="privacy-note">
-        Velora used the approved Quick Login challenge only to identify this account. It did not create or retain a Roblox login session.
+        Velora Companion used the approved Quick Sign-in session only long enough to identify this account. The Roblox session was not sent to Vercel or retained by Velora.
       </div>
 
       <button className="secondary-button" type="button" onClick={onReset}>Mirror another account</button>
@@ -114,7 +115,37 @@ export default function Home() {
   const [accountName, setAccountName] = useState(null);
   const [account, setAccount] = useState(null);
   const [error, setError] = useState("");
+  const [companionState, setCompanionState] = useState("checking");
   const pollingRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkCompanion = async () => {
+      try {
+        const response = await fetch(`${COMPANION_URL}/health`, {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          setCompanionState(response.ok && data?.ok ? "ready" : "missing");
+        }
+      } catch {
+        if (!cancelled) setCompanionState("missing");
+      }
+    };
+
+    checkCompanion();
+    const timer = window.setInterval(checkCompanion, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [companionState]);
 
   const statusCopy = useMemo(() => {
     if (status === "UserLinked") return accountName ? `${accountName} linked the code. Waiting for approval…` : "Account linked. Waiting for approval…";
@@ -125,6 +156,14 @@ export default function Home() {
   }, [status, accountName]);
 
   const reset = useCallback(() => {
+    if (challenge?.challengeId) {
+      fetch(`${COMPANION_URL}/quick-login/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challengeId: challenge.challengeId }),
+      }).catch(() => {});
+    }
+
     setPhase("idle");
     setChallenge(null);
     setStatus("Created");
@@ -132,7 +171,7 @@ export default function Home() {
     setAccount(null);
     setError("");
     pollingRef.current = false;
-  }, []);
+  }, [challenge]);
 
   const createCode = useCallback(async () => {
     setPhase("creating");
@@ -140,7 +179,15 @@ export default function Home() {
     setAccount(null);
 
     try {
-      const response = await fetch("/api/quick-login/create", { method: "POST" });
+      if (companionState !== "ready") {
+        throw new Error("Velora Companion is not running on this device.");
+      }
+
+      const response = await fetch(`${COMPANION_URL}/quick-login/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not create a Quick Login code.");
 
@@ -163,7 +210,11 @@ export default function Home() {
       if (cancelled) return;
 
       try {
-        const response = await fetch("/api/quick-login/status", { method: "POST" });
+        const response = await fetch(`${COMPANION_URL}/quick-login/status`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ challengeId: challenge.challengeId }),
+        });
         const data = await response.json();
 
         if (cancelled) return;
@@ -222,7 +273,7 @@ export default function Home() {
         <div className="hero-copy">
           <span className="eyebrow">ACCOUNT MIRROR</span>
           <h1>See your Roblox account from the outside.</h1>
-          <p>Approve a five-minute Roblox Quick Login code. Velora identifies the account, discards the private challenge, and mirrors public account data without ever creating a Roblox session.</p>
+          <p>Velora generates Roblox Quick Sign-in from your own computer through a local companion, then mirrors the account without ever sending the Roblox session to Vercel or browser JavaScript.</p>
         </div>
 
         {phase === "done" && account ? (
@@ -232,9 +283,29 @@ export default function Home() {
             {phase === "idle" || phase === "creating" ? (
               <>
                 <div className="card-kicker">Start a mirror</div>
-                <h2>No password. No Roblox session. No token.</h2>
-                <p className="muted">Velora asks Roblox for a temporary Quick Login challenge, generates a fresh encryption key for that attempt, and keeps both pieces in short-lived HttpOnly cookies.</p>
-                <button className="primary-button" type="button" onClick={createCode} disabled={phase === "creating"}>
+                <h2>Quick Sign-in from your own network.</h2>
+                <p className="muted">Roblox checks that the device creating the code is near the device approving it. Velora Companion performs that request locally instead of through Vercel.</p>
+
+                <div className={`companion-status ${companionState}`}>
+                  <span className="status-dot" />
+                  <span>
+                    {companionState === "checking"
+                      ? "Checking for Velora Companion…"
+                      : companionState === "ready"
+                        ? "Velora Companion is connected."
+                        : "Velora Companion is not running on this device."}
+                  </span>
+                </div>
+
+                {companionState === "missing" ? (
+                  <div className="companion-setup">
+                    <span className="detail-label">Run locally first</span>
+                    <code>npm run companion</code>
+                    <p>Keep that terminal open, then use this Velora page on the same computer. Approve the code from another device on the same network.</p>
+                  </div>
+                ) : null}
+
+                <button className="primary-button" type="button" onClick={createCode} disabled={phase === "creating" || companionState !== "ready"}>
                   {phase === "creating" ? "Creating code…" : "Generate Quick Login code"}
                 </button>
               </>
@@ -253,7 +324,7 @@ export default function Home() {
                 </ol>
 
                 <div className="status-line"><span className="pulse" /><span>{statusCopy}</span></div>
-                <div className="safety-strip">Velora intentionally never performs Roblox&apos;s final login/session exchange.</div>
+                <div className="safety-strip">After approval, the local companion briefly uses Roblox&apos;s resulting session only to identify the account. That cookie never leaves local RAM and is never returned to this website.</div>
               </>
             ) : null}
 
