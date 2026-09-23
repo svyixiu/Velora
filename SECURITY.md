@@ -1,26 +1,30 @@
 # Security Policy
 
-Velora handles a short-lived Roblox Quick Login challenge, so authentication-related bugs should be treated as sensitive even though Velora intentionally never creates a Roblox session.
+Velora handles Roblox Quick Sign-in locally. Authentication-related bugs should be treated as sensitive.
 
 ## Security invariants
 
 Contributions must preserve these rules:
 
-- Never expose the Quick Login `privateKey` to client JavaScript, HTML, logs, analytics, error tracking, or URLs.
-- Never expose the ephemeral per-attempt encryption key to client JavaScript.
-- Never call Roblox's final AuthToken login exchange or capture a `.ROBLOSECURITY` cookie.
-- Never ask a user for their Roblox password, session cookie, access token, email verification code, or 2FA code.
-- Never persist Quick Login challenge material in a database.
-- Generate a new cryptographically random 256-bit key for every Quick Login attempt.
-- Keep the key and encrypted challenge in separate `HttpOnly` cookies.
-- Destroy both cookies after validation, cancellation, or expiry.
+- Never return the Quick Sign-in `privateKey` to browser JavaScript.
+- Never return `.ROBLOSECURITY` to browser JavaScript.
+- Never send either value to Vercel, analytics, logging, crash reporting, or another remote service.
+- Never write either value to disk.
+- Never ask a user to paste a Roblox password, session cookie, access token, email verification code, or 2FA code into Velora.
+- Keep active Quick Sign-in state in local process memory only.
+- Destroy local challenge state after validation, cancellation, or expiry.
+- Use the Roblox session only long enough to resolve `/v1/users/authenticated`.
+- Keep the companion bound to loopback (`127.0.0.1`) unless the threat model is explicitly redesigned.
+- Restrict browser origins accepted by the local companion.
 
-## Threat-model note
+## Local session note
 
-The current zero-configuration design intentionally stores both the ephemeral encryption key and encrypted challenge in separate browser cookies. `HttpOnly` prevents ordinary page JavaScript from reading them, but compromise of the browser's raw cookie storage can expose both pieces.
+After a Quick Sign-in challenge is approved, Roblox's final AuthToken exchange creates a normal authenticated session. Velora Companion temporarily receives that session in RAM because that is how Roblox identifies the account that approved the challenge.
 
-Their lifetime is restricted to the short Roblox Quick Login challenge window, and Velora never turns the validated challenge into a Roblox login session.
+Velora does not expose or persist that session. Once the authenticated user ID, username, and display name are resolved, the application's reference to the cookie is discarded and only non-secret mirror data is returned.
+
+JavaScript strings cannot be reliably zeroized by the runtime, so this design minimizes retention rather than claiming cryptographic memory erasure.
 
 ## Reporting a vulnerability
 
-Please avoid posting active authentication bypasses or leaked credentials in a public issue. Open a minimal issue asking for a private contact path, without including secrets or exploit details.
+Do not place active authentication bypasses, cookies, Quick Sign-in private keys, or other credentials in a public GitHub issue. Open a minimal issue requesting a private contact path instead.
