@@ -145,7 +145,7 @@ export default function Home() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [companionState]);
+  }, []);
 
   const statusCopy = useMemo(() => {
     if (status === "UserLinked") return accountName ? `${accountName} linked the code. Waiting for approval…` : "Account linked. Waiting for approval…";
@@ -198,7 +198,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Could not create a Quick Login code.");
       setPhase("idle");
     }
-  }, []);
+  }, [companionState]);
 
   useEffect(() => {
     if (phase !== "waiting" || !challenge || pollingRef.current) return;
