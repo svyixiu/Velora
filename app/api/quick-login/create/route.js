@@ -1,15 +1,29 @@
 import { NextResponse } from "next/server";
 import { createQuickLoginChallenge } from "../../../../lib/roblox";
-import { sealChallenge } from "../../../../lib/session";
+import {
+  generateSessionKey,
+  sealChallenge,
+} from "../../../../lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COOKIE_NAME = "velora.quick-login";
+const CHALLENGE_COOKIE = "velora.quick-login";
+const SESSION_KEY_COOKIE = "velora.session-key";
 
 function sameOrigin(request) {
   const origin = request.headers.get("origin");
   return !origin || origin === request.nextUrl.origin;
+}
+
+function cookieOptions(expiresAt) {
+  return {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: expiresAt,
+  };
 }
 
 export async function POST(request) {
@@ -25,11 +39,15 @@ export async function POST(request) {
       throw new Error("Roblox returned an invalid challenge expiration time.");
     }
 
-    const sealed = sealChallenge({
-      code: challenge.code,
-      privateKey: challenge.privateKey,
-      expirationTime: challenge.expirationTime,
-    });
+    const sessionKey = generateSessionKey();
+    const sealed = sealChallenge(
+      {
+        code: challenge.code,
+        privateKey: challenge.privateKey,
+        expirationTime: challenge.expirationTime,
+      },
+      sessionKey,
+    );
 
     const response = NextResponse.json(
       {
@@ -44,13 +62,10 @@ export async function POST(request) {
       },
     );
 
-    response.cookies.set(COOKIE_NAME, sealed, {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      expires: expiresAt,
-    });
+    const options = cookieOptions(expiresAt);
+
+    response.cookies.set(SESSION_KEY_COOKIE, sessionKey, options);
+    response.cookies.set(CHALLENGE_COOKIE, sealed, options);
 
     return response;
   } catch (error) {
